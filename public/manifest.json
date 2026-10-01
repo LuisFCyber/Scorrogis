@@ -1,0 +1,40 @@
+{
+  "name": "Rotas Seguras - Resposta a Desastres",
+  "short_name": "Rotas Seguras",
+  "description": "Plataforma colaborativa em tempo real para rotas seguras e resposta a desastres naturais",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#1e40af",
+  "categories": ["navigation", "utilities", "emergency"],
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Reportar Situação",
+      "short_name": "Reportar",
+      "description": "Reportar alagamento ou via bloqueada",
+      "url": "/?action=report"
+    },
+    {
+      "name": "Estou Ilhado",
+      "short_name": "Socorro",
+      "description": "Sinalizar que precisa de resgate",
+      "url": "/?action=sos"
+    }
+  ]
+}

@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from 'react'
 import { io, Socket } from 'socket.io-client'
-import { useMapStore } from '@/lib/store'
+import { toast } from 'sonner'
+import { useMapStore, INCIDENT_META, URGENCY_META } from '@/lib/store'
 import type { Incident, Shelter, SurvivorSignal } from '@/types/geo'
 
 let socket: Socket | null = null
@@ -31,19 +32,51 @@ export function useRealtime() {
     socketRef.current = s
 
     const onIncidentCreated = (event: { payload: Incident }) => {
-      if (event?.payload) addIncident(event.payload)
+      if (event?.payload) {
+        addIncident(event.payload)
+        const meta = INCIDENT_META[event.payload.type]
+        toast.warning(`Novo alerta: ${meta?.label ?? 'incidente'}`, {
+          description: event.payload.description || 'Toque no marcador para detalhes.',
+          duration: 6000,
+        })
+      }
     }
     const onSurvivorCreated = (event: { payload: SurvivorSignal }) => {
-      if (event?.payload) addSurvivor(event.payload)
+      if (event?.payload) {
+        addSurvivor(event.payload)
+        const meta = URGENCY_META[event.payload.urgencyLevel]
+        toast.error(`Sinal de socorro: ${meta?.label ?? 'urgência'}`, {
+          description: `${event.payload.peopleCount} pessoa(s) aguardando ajuda.`,
+          duration: 8000,
+        })
+      }
     }
     const onShelterUpdated = (event: { payload: Shelter }) => {
-      if (event?.payload) updateShelter(event.payload)
+      if (event?.payload) {
+        updateShelter(event.payload)
+        toast.info(`Abrigo atualizado: ${event.payload.name}`, {
+          description: `Capacidade: ${event.payload.capacityStatus}`,
+          duration: 4000,
+        })
+      }
     }
     const onIncidentVoted = (event: {
       payload: { incidentId: string; vote: boolean }
     }) => {
-      // Recarrega votos via API - o store não tem info suficiente localmente
-      // Em produção com Supabase, podemos usar Realtime channel
+      // Recarrega votos via API
+      if (event?.payload) {
+        fetch(`/api/incidents`)
+          .then((r) => r.json())
+          .then((data) => {
+            const inc = (data.incidents ?? []).find(
+              (i: Incident) => i.id === event.payload.incidentId,
+            )
+            if (inc) {
+              updateIncidentVotes(inc.id, inc.upvotes, inc.downvotes, inc.verified)
+            }
+          })
+          .catch(() => {})
+      }
     }
 
     s.on('incident:created', onIncidentCreated)

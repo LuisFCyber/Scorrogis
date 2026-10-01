@@ -4,13 +4,16 @@ import { useEffect, useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { useMapStore } from '@/lib/store'
 import { useRealtime } from '@/lib/realtime/useRealtime'
+import { useOfflineSync } from '@/lib/offline/useOfflineSync'
 import Header from '@/components/panels/Header'
+import OfflineBanner from '@/components/panels/OfflineBanner'
 import QuickFilters from '@/components/panels/QuickFilters'
 import QuickActions from '@/components/panels/QuickActions'
 import QuickForm from '@/components/panels/QuickForm'
 import RoutePanel from '@/components/panels/RoutePanel'
 import { Button } from '@/components/ui/button'
 import { Database, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import type { Incident, Shelter, SurvivorSignal } from '@/types/geo'
 
 // Leaflet precisa de window - carrega apenas no cliente
@@ -32,6 +35,10 @@ export default function Home() {
   const loading = useMapStore((s) => s.loading)
   const setLoading = useMapStore((s) => s.setLoading)
 
+  // Habilita real-time e offline sync
+  useRealtime()
+  const { online, lastSync, pendingSync } = useOfflineSync()
+
   const [formOpen, setFormOpen] = useState(false)
   const [pendingPoint, setPendingPoint] = useState<{ lat: number; lng: number } | null>(null)
   const [seeding, setSeeding] = useState(false)
@@ -52,6 +59,9 @@ export default function Home() {
       setSurvivors((svData.survivors ?? []) as SurvivorSignal[])
     } catch (err) {
       console.error('Erro ao carregar dados:', err)
+      toast.error('Falha ao carregar dados online', {
+        description: 'Exibindo última versão em cache.',
+      })
     } finally {
       setLoading(false)
     }
@@ -86,6 +96,7 @@ export default function Home() {
     try {
       await fetch('/api/seed', { method: 'POST' })
       await loadAll()
+      toast.success('Dados de exemplo carregados!')
     } finally {
       setSeeding(false)
     }
@@ -96,11 +107,13 @@ export default function Home() {
 
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-background">
-      <Header />
+      <Header online={online} lastSync={lastSync} pendingSync={pendingSync} />
 
       <div className="absolute top-14 inset-x-0 bottom-0">
         <MapView />
       </div>
+
+      <OfflineBanner online={online} lastSync={lastSync} />
 
       <QuickFilters />
       <QuickActions />
