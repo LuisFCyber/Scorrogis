@@ -130,7 +130,7 @@ export default function Home() {
           className="bg-card/95 backdrop-blur-sm shadow-md text-xs"
         >
           {seeding ? <Loader2 size={14} className="animate-spin mr-1" /> : <Database size={14} className="mr-1" />}
-          {seeding ? 'Carregando...' : 'Dados de exemplo (SP)'}
+          {seeding ? 'Carregando...' : 'Dados de exemplo (Franca/SP)'}
         </Button>
       </div>
 

@@ -13,9 +13,9 @@ import type {
   SurvivorUrgency,
 } from '@/types/geo'
 
-// Coordenadas padrão (centro de São Paulo)
-export const DEFAULT_CENTER: [number, number] = [-23.5505, -46.6333]
-export const DEFAULT_ZOOM = 13
+// Coordenadas padrão (centro de Franca/SP)
+export const DEFAULT_CENTER: [number, number] = [-20.5389, -47.4008]
+export const DEFAULT_ZOOM = 14
 
 // Modo de criação no mapa
 export type CreationMode =
