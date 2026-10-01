@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useMapStore } from '@/lib/store'
 import { useRealtime } from '@/lib/realtime/useRealtime'
@@ -10,11 +10,12 @@ import OfflineBanner from '@/components/panels/OfflineBanner'
 import QuickFilters from '@/components/panels/QuickFilters'
 import QuickActions from '@/components/panels/QuickActions'
 import QuickForm from '@/components/panels/QuickForm'
+import HelpRequestForm from '@/components/panels/HelpRequestForm'
 import RoutePanel from '@/components/panels/RoutePanel'
 import { Button } from '@/components/ui/button'
 import { Database, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Incident, Shelter, SurvivorSignal } from '@/types/geo'
+import type { Incident, Shelter, SurvivorSignal, HelpRequest, HeatmapPoint } from '@/types/geo'
 
 // Leaflet precisa de window - carrega apenas no cliente
 const MapView = dynamic(() => import('@/components/map/MapView'), {
@@ -32,6 +33,11 @@ export default function Home() {
   const setIncidents = useMapStore((s) => s.setIncidents)
   const setShelters = useMapStore((s) => s.setShelters)
   const setSurvivors = useMapStore((s) => s.setSurvivors)
+  const setHelpRequests = useMapStore((s) => s.setHelpRequests)
+  const setHeatmap = useMapStore((s) => s.setHeatmap)
+  const setHeatmapLoading = useMapStore((s) => s.setHeatmapLoading)
+  const layers = useMapStore((s) => s.layers)
+  const helpFilters = useMapStore((s) => s.helpFilters)
   const loading = useMapStore((s) => s.loading)
   const setLoading = useMapStore((s) => s.setLoading)
 
@@ -40,23 +46,28 @@ export default function Home() {
   const { online, lastSync, pendingSync } = useOfflineSync()
 
   const [formOpen, setFormOpen] = useState(false)
+  const [helpFormOpen, setHelpFormOpen] = useState(false)
   const [pendingPoint, setPendingPoint] = useState<{ lat: number; lng: number } | null>(null)
   const [seeding, setSeeding] = useState(false)
+  const heatmapTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const loadAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [incRes, shRes, svRes] = await Promise.all([
+      const [incRes, shRes, svRes, hrRes] = await Promise.all([
         fetch('/api/incidents'),
         fetch('/api/shelters'),
         fetch('/api/survivors'),
+        fetch('/api/help-requests'),
       ])
       const incData = await incRes.json()
       const shData = await shRes.json()
       const svData = await svRes.json()
+      const hrData = await hrRes.json()
       setIncidents((incData.incidents ?? []) as Incident[])
       setShelters((shData.shelters ?? []) as Shelter[])
       setSurvivors((svData.survivors ?? []) as SurvivorSignal[])
+      setHelpRequests((hrData.helpRequests ?? []) as HelpRequest[])
     } catch (err) {
       console.error('Erro ao carregar dados:', err)
       toast.error('Falha ao carregar dados online', {
@@ -65,11 +76,60 @@ export default function Home() {
     } finally {
       setLoading(false)
     }
-  }, [setIncidents, setShelters, setSurvivors, setLoading])
+  }, [setIncidents, setShelters, setSurvivors, setHelpRequests, setLoading])
+
+  const loadHeatmap = useCallback(async () => {
+    if (!layers.heatmap) return
+    setHeatmapLoading(true)
+    try {
+      // Busca com bbox amplo (Franca e arredores)
+      const bbox = '-47.6,-20.7,-47.2,-20.35'
+      const params = new URLSearchParams({ bbox })
+      // Aplica filtros ativos
+      if (helpFilters.categories.length === 1) {
+        params.set('category', helpFilters.categories[0])
+      }
+      if (helpFilters.urgencies.length === 1) {
+        params.set('urgency', helpFilters.urgencies[0])
+      }
+      const res = await fetch(`/api/heatmap?${params}`)
+      if (!res.ok) return
+      const data = await res.json()
+      const points: HeatmapPoint[] = (data.points ?? []).map((p: { lng: number; lat: number; count: number; intensity: number }) => ({
+        lng: p.lng,
+        lat: p.lat,
+        count: p.count,
+        intensity: p.intensity,
+      }))
+      setHeatmap(points)
+    } catch (err) {
+      console.error('Erro ao carregar heatmap:', err)
+    } finally {
+      setHeatmapLoading(false)
+    }
+  }, [layers.heatmap, helpFilters, setHeatmap, setHeatmapLoading])
 
   useEffect(() => {
     loadAll()
   }, [loadAll])
+
+  // Carrega heatmap quando ativado, e atualiza a cada 60s
+  useEffect(() => {
+    if (heatmapTimerRef.current) {
+      clearInterval(heatmapTimerRef.current)
+      heatmapTimerRef.current = null
+    }
+    if (layers.heatmap) {
+      loadHeatmap()
+      heatmapTimerRef.current = setInterval(loadHeatmap, 60_000) // 1 min
+    }
+    return () => {
+      if (heatmapTimerRef.current) {
+        clearInterval(heatmapTimerRef.current)
+        heatmapTimerRef.current = null
+      }
+    }
+  }, [layers.heatmap, loadHeatmap])
 
   // Registra handler global para cliques no mapa (durante modo de criação)
   useEffect(() => {
@@ -77,6 +137,9 @@ export default function Home() {
       if (creationMode.kind === 'incident' || creationMode.kind === 'survivor') {
         setPendingPoint({ lat, lng })
         setFormOpen(true)
+      } else if (creationMode.kind === 'help-request') {
+        setPendingPoint({ lat, lng })
+        setHelpFormOpen(true)
       } else if (creationMode.kind === 'route-origin') {
         useMapStore.getState().setRouteOrigin([lng, lat])
         setCreationMode({ kind: 'route-destination' })
@@ -96,6 +159,7 @@ export default function Home() {
     try {
       await fetch('/api/seed', { method: 'POST' })
       await loadAll()
+      if (layers.heatmap) await loadHeatmap()
       toast.success('Dados de exemplo carregados!')
     } finally {
       setSeeding(false)
@@ -142,7 +206,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Formulário rápido (modal) */}
+      {/* Formulário de incidente/sobrevivente (modal) */}
       <QuickForm
         open={formOpen}
         onOpenChange={(open) => {
@@ -153,6 +217,20 @@ export default function Home() {
           }
         }}
         formType={formType}
+        lat={pendingPoint?.lat ?? null}
+        lng={pendingPoint?.lng ?? null}
+      />
+
+      {/* Formulário de pedido de ajuda (modal) */}
+      <HelpRequestForm
+        open={helpFormOpen}
+        onOpenChange={(open) => {
+          setHelpFormOpen(open)
+          if (!open) {
+            setPendingPoint(null)
+            setCreationMode({ kind: 'none' })
+          }
+        }}
         lat={pendingPoint?.lat ?? null}
         lng={pendingPoint?.lng ?? null}
       />

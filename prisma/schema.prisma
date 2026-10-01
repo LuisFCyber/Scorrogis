@@ -75,3 +75,85 @@ model RouteValidation {
 
   @@index([incidentId])
 }
+
+// ============================================================================
+//  PEDIDOS DE AJUDA — formulário rico (categoria, urgência, vulneráveis,
+//  animais, contato, fotos). Status fluem: pending → analyzing → validated
+//  → in_progress → resolved | cancelled.
+// ============================================================================
+
+model HelpRequest {
+  id                String   @id @default(cuid())
+  // category: rescue|supplies|medical|shelter|transport
+  category          String   @default("rescue")
+  // urgency: low|medium|high|critical
+  urgency           String   @default("medium")
+  // status: pending|analyzing|validated|in_progress|resolved|cancelled
+  status            String   @default("pending")
+  longitude         Float
+  latitude          Float
+  description       String?
+  peopleCount       Int      @default(1)
+  // JSON array string: ['criancas','idosos','gestantes','pcd','outros']
+  vulnerableGroups  String?
+  hasAnimals        Boolean  @default(false)
+  animalCount       Int      @default(0)
+  animalDescription String?
+  // Contato — guardado como JSON string. PII: nunca expor em listagens públicas
+  contact           String?
+  // Array de URLs (futuro: Supabase Storage). JSON string.
+  photos            String?
+  // Validação comunitária
+  validationCount   Int      @default(0)   // confirm - deny
+  denyCount         Int      @default(0)
+  communityVerified Boolean  @default(false) // selo amarelo
+  officialVerified  Boolean  @default(false) // selo verde (moderador)
+  // Edição/acompanhamento
+  authorToken       String?  // token anônimo para o autor editar sem login
+  expiresAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([category])
+  @@index([urgency])
+  @@index([status])
+  @@index([communityVerified])
+  @@index([officialVerified])
+  @@index([expiresAt])
+  @@index([authorToken])
+}
+
+// Votos de validação comunitária (confirm/deny) — sem user, usamos ipHash
+model HelpRequestValidation {
+  id          String   @id @default(cuid())
+  requestId   String
+  // vote: true = confirmo que o pedido é real; false = denúncia (fake/atendido)
+  vote        Boolean
+  comment     String?
+  // Hash do IP para rate-limit (sem guardar IP original)
+  ipHash      String?
+  // Token anônimo do navegador (localStorage) p/ evitar duplo voto
+  voterToken  String?
+  createdAt   DateTime @default(now())
+
+  @@unique([requestId, voterToken])
+  @@index([requestId])
+  @@index([ipHash])
+  @@index([createdAt])
+}
+
+// Denúncias de pedidos falsos/ofensivos/duplicados
+model ModerationReport {
+  id          String   @id @default(cuid())
+  targetType   String   // 'help_request' | 'validation'
+  targetId    String
+  reason      String   // 'fake' | 'offensive' | 'duplicate' | 'outdated' | 'other'
+  comment     String?
+  ipHash      String?
+  reporterToken String?
+  status      String   @default("pending") // 'pending' | 'reviewed' | 'actioned'
+  createdAt   DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([status])
+}

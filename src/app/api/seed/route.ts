@@ -9,6 +9,9 @@ export async function POST() {
     await db.incidentReport.deleteMany()
     await db.shelter.deleteMany()
     await db.survivorSignal.deleteMany()
+    await db.helpRequestValidation.deleteMany()
+    await db.helpRequest.deleteMany()
+    await db.moderationReport.deleteMany()
 
     const now = Date.now()
     const hour = 60 * 60 * 1000
@@ -160,6 +163,132 @@ export async function POST() {
       }),
     ])
 
+    // Pedidos de ajuda (com categorias e validações)
+    const helpRequests = await Promise.all([
+      db.helpRequest.create({
+        data: {
+          category: 'rescue',
+          urgency: 'critical',
+          status: 'validated',
+          longitude: -47.4050, latitude: -20.5395,
+          description: 'Família de 4 pessoas ilhadas no telhado, água subindo.',
+          peopleCount: 4,
+          vulnerableGroups: JSON.stringify(['criancas', 'idosos']),
+          hasAnimals: true,
+          animalCount: 2,
+          animalDescription: '1 cachorro pequeno e 1 gato',
+          validationCount: 5,
+          denyCount: 0,
+          communityVerified: true,
+          expiresAt: new Date(now + 24 * hour),
+        },
+      }),
+      db.helpRequest.create({
+        data: {
+          category: 'supplies',
+          urgency: 'high',
+          status: 'pending',
+          longitude: -47.4150, latitude: -20.5440,
+          description: 'Necessita água potável e cestas básicas urgentemente.',
+          peopleCount: 6,
+          vulnerableGroups: JSON.stringify(['gestantes']),
+          hasAnimals: false,
+          animalCount: 0,
+          validationCount: 2,
+          denyCount: 0,
+          communityVerified: false,
+          expiresAt: new Date(now + 48 * hour),
+        },
+      }),
+      db.helpRequest.create({
+        data: {
+          category: 'medical',
+          urgency: 'critical',
+          status: 'in_progress',
+          longitude: -47.3980, latitude: -20.5300,
+          description: 'Pessoa idosa com problemas respiratórios precisa de oxigênio.',
+          peopleCount: 1,
+          vulnerableGroups: JSON.stringify(['idosos']),
+          hasAnimals: false,
+          animalCount: 0,
+          validationCount: 7,
+          denyCount: 1,
+          communityVerified: true,
+          officialVerified: true,
+          expiresAt: new Date(now + 24 * hour),
+        },
+      }),
+      db.helpRequest.create({
+        data: {
+          category: 'shelter',
+          urgency: 'medium',
+          status: 'validated',
+          longitude: -47.4250, latitude: -20.5520,
+          description: 'Família desabrigada precisa de acolhimento temporário.',
+          peopleCount: 3,
+          vulnerableGroups: JSON.stringify(['criancas']),
+          hasAnimals: true,
+          animalCount: 1,
+          animalDescription: '1 cachorro de porte médio',
+          validationCount: 4,
+          denyCount: 0,
+          communityVerified: true,
+          expiresAt: new Date(now + 60 * hour),
+        },
+      }),
+      db.helpRequest.create({
+        data: {
+          category: 'transport',
+          urgency: 'high',
+          status: 'pending',
+          longitude: -47.4320, latitude: -20.5600,
+          description: 'Precisa de transporte para hospital - consulta de hemodiálise.',
+          peopleCount: 1,
+          vulnerableGroups: JSON.stringify(['idosos', 'pcd']),
+          hasAnimals: false,
+          animalCount: 0,
+          validationCount: 1,
+          denyCount: 0,
+          communityVerified: false,
+          expiresAt: new Date(now + 48 * hour),
+        },
+      }),
+      db.helpRequest.create({
+        data: {
+          category: 'rescue',
+          urgency: 'high',
+          status: 'pending',
+          longitude: -47.3900, latitude: -20.5500,
+          description: 'Pessoas presas em casa com água na cintura.',
+          peopleCount: 5,
+          vulnerableGroups: JSON.stringify(['criancas', 'idosos']),
+          hasAnimals: true,
+          animalCount: 3,
+          animalDescription: '2 cachorros e 1 gato',
+          validationCount: 3,
+          denyCount: 0,
+          communityVerified: true,
+          expiresAt: new Date(now + 36 * hour),
+        },
+      }),
+    ])
+
+    // Algumas validações para os pedidos
+    const validations = await Promise.all([
+      db.helpRequestValidation.create({
+        data: { requestId: helpRequests[0].id, vote: true, voterToken: 'seed-voter-1' },
+      }),
+      db.helpRequestValidation.create({
+        data: { requestId: helpRequests[0].id, vote: true, voterToken: 'seed-voter-2' },
+      }),
+      db.helpRequestValidation.create({
+        data: { requestId: helpRequests[2].id, vote: true, voterToken: 'seed-voter-1' },
+      }),
+      db.helpRequestValidation.create({
+        data: { requestId: helpRequests[2].id, vote: true, voterToken: 'seed-voter-3' },
+      }),
+    ])
+
     return NextResponse.json({
       seeded: true,
       location: 'Franca/SP',
@@ -167,6 +296,8 @@ export async function POST() {
         incidents: incidents.length,
         shelters: shelters.length,
         survivors: survivors.length,
+        helpRequests: helpRequests.length,
+        validations: validations.length,
       },
     })
   } catch (err) {

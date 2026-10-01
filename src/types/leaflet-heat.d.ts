@@ -1,0 +1,24 @@
+// Tipos para leaflet.heat (não tem @types oficial)
+declare module 'leaflet.heat' {
+  import * as L from 'leaflet'
+
+  interface HeatLayerOptions {
+    minOpacity?: number
+    maxZoom?: number
+    max?: number
+    radius?: number
+    blur?: number
+    gradient?: { [key: number]: string }
+  }
+
+  function heatLayer(
+    latlngs: Array<[number, number, number?]>,
+    options?: HeatLayerOptions,
+  ): L.Layer
+
+  namespace L {
+    export { heatLayer }
+  }
+
+  export = heatLayer
+}

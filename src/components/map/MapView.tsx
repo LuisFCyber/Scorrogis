@@ -2,10 +2,13 @@
 
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
+import 'leaflet.heat'
 import { useEffect, useMemo } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap, useMap as useMapHook } from 'react-leaflet'
 import { useMapStore, DEFAULT_CENTER, DEFAULT_ZOOM, INCIDENT_META, URGENCY_META, CAPACITY_LABEL } from '@/lib/store'
-import type { Incident, Shelter, SurvivorSignal } from '@/types/geo'
+import type { Incident, Shelter, SurvivorSignal, HelpRequest, HelpCategory, HelpUrgency } from '@/types/geo'
+import { HELP_CATEGORY_META, HELP_URGENCY_META, HELP_STATUS_META, VULNERABLE_GROUP_LABELS } from '@/types/geo'
+import HelpRequestPopup from '@/components/panels/HelpRequestPopup'
 
 // Corrige bug dos ícones do Leaflet no webpack
 // Cria um divIcon customizado (mais flexível que o default)
@@ -138,6 +141,95 @@ function destinationIcon(): L.DivIcon {
   })
 }
 
+// Marcador para pedido de ajuda: cor por urgência + selo visual
+function helpRequestIcon(
+  category: HelpCategory,
+  urgency: HelpUrgency,
+  verified: 'none' | 'community' | 'official',
+): L.DivIcon {
+  const catMeta = HELP_CATEGORY_META[category]
+  const urgMeta = HELP_URGENCY_META[urgency]
+  // Tamanho cresce com urgência
+  const size = urgency === 'critical' ? 36 : urgency === 'high' ? 32 : 28
+  const ringColor = verified === 'official' ? '#16a34a' : verified === 'community' ? '#3b82f6' : urgMeta.color
+  const ringWidth = verified !== 'none' ? 4 : 3
+  const emoji =
+    category === 'rescue' ? '🆘' :
+    category === 'medical' ? '✚' :
+    category === 'supplies' ? '📦' :
+    category === 'shelter' ? '🏠' :
+    category === 'transport' ? '🚐' : '?'
+  const badge = verified === 'official'
+    ? '<div style="position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:#16a34a;border:2px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:bold;">✓</div>'
+    : verified === 'community'
+      ? '<div style="position:absolute;top:-4px;right:-4px;width:12px;height:12px;background:#3b82f6;border:2px solid white;border-radius:50%;"></div>'
+      : ''
+  return makeDivIcon(
+    `<div style="
+      position:relative;
+      width:${size}px;height:${size}px;
+      background:${catMeta.color};
+      border:${ringWidth}px solid ${ringColor};
+      border-radius:50%;
+      box-shadow:0 2px 8px rgba(0,0,0,0.45);
+      display:flex;align-items:center;justify-content:center;
+      color:white;font-size:${size > 30 ? 16 : 14}px;
+    ">${emoji}${badge}</div>`,
+    'help-request-marker',
+  )
+}
+
+// Componente para renderizar Heatmap layer (leaflet.heat)
+function HeatmapLayer() {
+  const heatmap = useMapStore((s) => s.heatmap)
+  const layers = useMapStore((s) => s.layers)
+  const map = useMapHook()
+
+  useEffect(() => {
+    if (!map) return
+    if (!layers.heatmap) {
+      // Remove qualquer layer de heat existente
+      map.eachLayer((layer) => {
+        if (layer instanceof (L as unknown as { heatLayer?: unknown }).heatLayer) {
+          map.removeLayer(layer)
+        }
+      })
+      return
+    }
+    // Remove heat antigo
+    map.eachLayer((layer) => {
+      if (layer instanceof (L as unknown as { heatLayer?: unknown }).heatLayer) {
+        map.removeLayer(layer)
+      }
+    })
+    if (heatmap.length === 0) return
+
+    // Adiciona novo
+    const points: [number, number, number][] = heatmap.map((p) => [p.lat, p.lng, p.intensity])
+    const heatLayer = (L as unknown as { heatLayer: (pts: [number, number, number][], opts: Record<string, unknown>) => L.Layer })
+      .heatLayer(points, {
+        radius: 35,
+        blur: 25,
+        maxZoom: 17,
+        max: 1.0,
+        minOpacity: 0.3,
+        gradient: {
+          0.0: 'blue',
+          0.3: 'cyan',
+          0.5: 'lime',
+          0.7: 'yellow',
+          1.0: 'red',
+        },
+      })
+    heatLayer.addTo(map)
+    return () => {
+      map.removeLayer(heatLayer)
+    }
+  }, [map, heatmap, layers.heatmap])
+
+  return null
+}
+
 // Componente interno que captura cliques no mapa
 function MapClickHandler() {
   const creationMode = useMapStore((s) => s.creationMode)
@@ -190,14 +282,17 @@ export default function MapView() {
   const incidents = useMapStore((s) => s.incidents)
   const shelters = useMapStore((s) => s.shelters)
   const survivors = useMapStore((s) => s.survivors)
+  const helpRequests = useMapStore((s) => s.helpRequests)
   const route = useMapStore((s) => s.route)
   const layers = useMapStore((s) => s.layers)
   const filters = useMapStore((s) => s.filters)
+  const helpFilters = useMapStore((s) => s.helpFilters)
   const creationMode = useMapStore((s) => s.creationMode)
   const userLocation = useMapStore((s) => s.userLocation)
   const routeOrigin = useMapStore((s) => s.routeOrigin)
   const routeDestination = useMapStore((s) => s.routeDestination)
   const setSelected = useMapStore((s) => s.setSelected)
+  const selectedHelpRequestId = useMapStore((s) => s.selectedHelpRequestId)
 
   // Filtra incidentes conforme camada + filtros
   const visibleIncidents = useMemo(() => {
@@ -223,6 +318,20 @@ export default function MapView() {
     return survivors.filter((s) => !s.isResolved)
   }, [survivors, layers.survivors])
 
+  const visibleHelpRequests = useMemo(() => {
+    if (!layers.helpRequests) return []
+    return helpRequests.filter((h) => {
+      if (!helpFilters.categories.includes(h.category)) return false
+      if (!helpFilters.urgencies.includes(h.urgency)) return false
+      if (!helpFilters.statuses.includes(h.status)) return false
+      if (helpFilters.onlyActive && h.expiresAt) {
+        const expired = new Date(h.expiresAt).getTime() < Date.now()
+        if (expired) return false
+      }
+      return true
+    })
+  }, [helpRequests, layers.helpRequests, helpFilters])
+
   const cursorClass =
     creationMode.kind !== 'none' ? 'cursor-crosshair' : ''
 
@@ -242,6 +351,7 @@ export default function MapView() {
 
       <MapClickHandler />
       <RecenterOnUser />
+      <HeatmapLayer />
 
       {/* Incidentes */}
       {visibleIncidents.map((i) => (
@@ -284,6 +394,30 @@ export default function MapView() {
           </Popup>
         </Marker>
       ))}
+
+      {/* Pedidos de Ajuda */}
+      {visibleHelpRequests.map((h) => {
+        const verified: 'none' | 'community' | 'official' = h.officialVerified
+          ? 'official'
+          : h.communityVerified
+            ? 'community'
+            : 'none'
+        return (
+          <Marker
+            key={h.id}
+            position={[h.latitude, h.longitude]}
+            icon={helpRequestIcon(h.category, h.urgency, verified)}
+            eventHandlers={{ click: () => setSelected('help-request', h.id) }}
+          >
+            <Popup>
+              <HelpRequestPopup
+                request={selectedHelpRequestId === h.id ? h : h}
+                onClose={() => setSelected(null, null)}
+              />
+            </Popup>
+          </Marker>
+        )
+      })}
 
       {/* Localização do usuário */}
       {userLocation && (

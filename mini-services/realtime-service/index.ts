@@ -73,6 +73,32 @@ io.on('connection', (socket) => {
     console.log(`[realtime] Novo sinal de sobrevivente`)
   })
 
+  // Pedido de ajuda
+  socket.on('help-request:create', (data) => {
+    const event: GeoEvent = {
+      id: generateId(),
+      type: 'help_request',
+      action: 'create',
+      payload: data,
+      timestamp: new Date().toISOString(),
+    }
+    io.emit('help-request:created', event)
+    console.log(`[realtime] Novo pedido de ajuda`)
+  })
+
+  // Atualização de pedido de ajuda (validação comunitária, status)
+  socket.on('help-request:update', (data) => {
+    const event: GeoEvent = {
+      id: generateId(),
+      type: 'help_request',
+      action: 'update',
+      payload: data,
+      timestamp: new Date().toISOString(),
+    }
+    io.emit('help-request:updated', event)
+    console.log(`[realtime] Pedido de ajuda atualizado`)
+  })
+
   // Atualização de abrigo (capacidade, suprimentos)
   socket.on('shelter:update', (data) => {
     const event: GeoEvent = {

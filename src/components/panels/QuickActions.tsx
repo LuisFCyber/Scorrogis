@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { AlertTriangle, MapPin, LifeBuoy, Navigation, Plus, X, LocateFixed } from 'lucide-react'
+import { AlertTriangle, MapPin, LifeBuoy, Navigation, Plus, X, LocateFixed, HandHeart } from 'lucide-react'
 import { useMapStore } from '@/lib/store'
 
 export default function QuickActions() {
@@ -35,6 +35,10 @@ export default function QuickActions() {
     setCreationMode({ kind: 'survivor' })
     setOpen(false)
   }
+  const startHelpRequest = () => {
+    setCreationMode({ kind: 'help-request' })
+    setOpen(false)
+  }
   const startRoute = () => {
     setRoute(null)
     setRouteOrigin(null)
@@ -60,6 +64,7 @@ export default function QuickActions() {
             {creationMode.kind === 'incident' && '📍 Clique no mapa para reportar um incidente'}
             {creationMode.kind === 'shelter' && '🏠 Clique no mapa para cadastrar um abrigo'}
             {creationMode.kind === 'survivor' && '🆘 Clique no mapa para sinalizar pessoa ilhada'}
+            {creationMode.kind === 'help-request' && '🆘 Clique no mapa para criar um pedido de ajuda'}
             {creationMode.kind === 'route-origin' && 'A) Clique no ponto de origem'}
             {creationMode.kind === 'route-destination' && 'B) Clique no ponto de destino'}
           </span>
@@ -78,10 +83,16 @@ export default function QuickActions() {
         {open && (
           <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
             <FabAction
+              onClick={startHelpRequest}
+              icon={<HandHeart size={18} />}
+              label="Pedir Ajuda"
+              color="#dc2626"
+            />
+            <FabAction
               onClick={startIncident}
               icon={<AlertTriangle size={18} />}
               label="Reportar Situação"
-              color="#ef4444"
+              color="#f59e0b"
             />
             <FabAction
               onClick={startSurvivor}
