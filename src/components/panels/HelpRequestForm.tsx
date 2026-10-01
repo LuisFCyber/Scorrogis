@@ -412,6 +412,14 @@ export default function HelpRequestForm({ open, onOpenChange, lat, lng }: HelpRe
                 {error}
               </div>
             )}
+
+            {/* Aviso visual quando botão está desabilitado */}
+            {!consent && (
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-400 text-xs p-2 rounded-md flex items-center gap-2">
+                <AlertTriangle size={12} className="flex-shrink-0" />
+                Marque o <strong>consentimento LGPD</strong> acima para habilitar o envio do pedido.
+              </div>
+            )}
           </div>
         )}
 

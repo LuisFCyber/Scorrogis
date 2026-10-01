@@ -9,6 +9,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
+import { useMapStore } from '@/lib/store'
 import type { HelpRequest, HelpCategory, HelpUrgency, VulnerableGroup } from '@/types/geo'
 import {
   HELP_CATEGORY_META, HELP_URGENCY_META, HELP_STATUS_META, VULNERABLE_GROUP_LABELS,
@@ -17,7 +18,6 @@ import {
 interface HelpRequestPopupProps {
   request: HelpRequest | null
   onClose: () => void
-  onValidate?: (requestId: string, vote: boolean) => void
 }
 
 // Token anônimo do votante (gerado uma vez por navegador, guardado em localStorage)
@@ -62,6 +62,15 @@ export default function HelpRequestPopup({ request, onClose }: HelpRequestPopupP
   const [showReportDialog, setShowReportDialog] = useState(false)
   const [reportReason, setReportReason] = useState<string>('fake')
   const [reportComment, setReportComment] = useState('')
+  // Estado local de contadores (atualizado após votar)
+  const [localCounts, setLocalCounts] = useState<{ confirms: number; denies: number }>({
+    confirms: 0,
+    denies: 0,
+  })
+  const [localCommunityVerified, setLocalCommunityVerified] = useState(false)
+
+  // Hooks do store para propagar atualizações a outros componentes
+  const updateHelpRequest = useMapStore((s) => s.updateHelpRequest)
 
   useEffect(() => {
     if (request) {
@@ -69,6 +78,11 @@ export default function HelpRequestPopup({ request, onClose }: HelpRequestPopupP
       setReportReason('fake')
       setReportComment('')
       setShowReportDialog(false)
+      setLocalCounts({
+        confirms: request.validationCount,
+        denies: request.denyCount,
+      })
+      setLocalCommunityVerified(request.communityVerified)
     }
   }, [request])
 
@@ -106,8 +120,24 @@ export default function HelpRequestPopup({ request, onClose }: HelpRequestPopupP
         }
         return
       }
+      // Atualiza estado local imediatamente para feedback visual
+      setLocalCounts({
+        confirms: data.counts.confirms,
+        denies: data.counts.denies,
+      })
+      setLocalCommunityVerified(data.communityVerified)
       setUserVote(vote)
       markVoted(request.id, vote)
+
+      // Propaga para o store global (outros popups/markers ficam sincronizados)
+      updateHelpRequest({
+        ...request,
+        validationCount: data.counts.confirms,
+        denyCount: data.counts.denies,
+        communityVerified: data.communityVerified,
+        status: data.status || request.status,
+      })
+
       toast.success(
         vote ? 'Pedido confirmado!' : 'Denúncia registrada',
         {
@@ -194,7 +224,7 @@ export default function HelpRequestPopup({ request, onClose }: HelpRequestPopupP
               <ShieldCheck size={11} className="mr-1" />
               Verificado oficial
             </Badge>
-          ) : request.communityVerified ? (
+          ) : localCommunityVerified ? (
             <Badge className="bg-blue-500 hover:bg-blue-500 text-[10px] py-0.5">
               <BadgeCheck size={11} className="mr-1" />
               Validado pela comunidade
@@ -242,10 +272,10 @@ export default function HelpRequestPopup({ request, onClose }: HelpRequestPopupP
         {/* Validação */}
         <div className="flex items-center gap-3 text-xs pt-1 border-t border-border">
           <span className="text-muted-foreground">
-            👍 {request.validationCount} confirmações
+            👍 {localCounts.confirms} confirmações
           </span>
           <span className="text-muted-foreground">
-            👎 {request.denyCount}
+            👎 {localCounts.denies}
           </span>
         </div>
 
